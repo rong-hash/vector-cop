@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
-// Module: control_unit
-// Function: FSM to control the instruction execution flow.
+// Module: control_unit (Revised for confirmed Single-Cycle Execution)
+// Function: FSM that enforces a single-cycle execution for all operations.
 // -----------------------------------------------------------------------------
 module control_unit (
     // Global Interface
@@ -12,70 +12,90 @@ module control_unit (
     output reg         vsi_op_ready,
     output wire        vsi_cop_idle,
 
-    // Decoded Instruction signals
-    input  wire        is_vxor,
-    input  wire        is_vmacc,
-    input  wire        is_vredsum,
-    input  wire        is_vslideup,
-    input  wire        is_vrgather,
-
-    // Datapath Control Outputs
-    output reg         exec_en
-    // Add other control signals like fetch_en, wb_en as needed
+    // Decoded Instruction signals from Decoder
+    input  wire [31:0] vsi_op,
+    input  wire        vsi_lmul,
+    input  wire        vsi_sew,
+    
+    // Control Outputs to Datapath
+    output reg         exec_en,
+    output reg         write_en,
+    output reg [31:0]  op_reg,    // Registered instruction for the datapath
+    output reg         lmul_reg,  // Registered lmul
+    output reg         sew_reg    // Registered sew
 );
 
     // FSM State Definition
-    localparam [1:0] IDLE    = 2'b00;
-    localparam [1:0] EXECUTE = 2'b01;
-    localparam [1:0] WB      = 2'b10;
+    localparam [1:0] S_IDLE       = 2'b00;
+    localparam [1:0] S_EXECUTE    = 2'b01;
+    localparam [1:0] S_WRITE_BACK = 2'b10;
 
     reg [1:0] current_state, next_state;
 
     // FSM State Register
     always @(posedge vsi_clk or negedge vsi_rst_n) begin
         if (!vsi_rst_n) begin
-            current_state <= IDLE;
+            current_state <= S_IDLE;
         end else begin
             current_state <= next_state;
         end
     end
 
-    // FSM Next State Logic & Outputs
+    // Instruction Register Logic
+    // Latch the instruction details when moving from IDLE to EXECUTE
+    always @(posedge vsi_clk or negedge vsi_rst_n) begin
+        if (!vsi_rst_n) begin
+            op_reg <= 32'b0;
+            lmul_reg <= 1'b0;
+            sew_reg <= 1'b0;
+        end else if (current_state == S_IDLE && vsi_op_valid) begin
+            op_reg <= vsi_op;
+            lmul_reg <= vsi_lmul;
+            sew_reg <= vsi_sew;
+        end
+    end
+
+    // FSM Next State Logic & Control Signal Outputs
     always @(*) begin
-        // Default values
+        // Default values for control signals
         next_state   = current_state;
         vsi_op_ready = 1'b0;
         exec_en      = 1'b0;
+        write_en     = 1'b0;
 
         case (current_state)
-            IDLE: begin
+            S_IDLE: begin
                 vsi_op_ready = 1'b1;
                 if (vsi_op_valid) begin
-                    next_state = EXECUTE; // Simple transition, assumes fetch happens in 1 cycle
+                    next_state = S_EXECUTE;
                 end
             end
             
-            EXECUTE: begin
-                // For simple instructions, this state takes one cycle.
-                // For complex/multi-cycle instructions like vredsum, this state
-                // would persist for multiple cycles using a counter.
+            S_EXECUTE: begin
+                // ** This state lasts for EXACTLY ONE clock cycle. **
+                // Enable the datapath's execution logic.
                 exec_en = 1'b1;
-                next_state = WB;
+                
+                // Unconditionally move to WRITE_BACK on the next clock edge,
+                // enforcing the single-cycle execution rule for all operations.
+                next_state = S_WRITE_BACK;
             end
             
-            WB: begin
-                // The datapath is already presenting the data to the write ports.
-                // The write to RF happens on the next clock edge.
-                // This state ensures we stay off the bus for one cycle while the write completes.
-                next_state = IDLE;
+            S_WRITE_BACK: begin
+                // Enable the datapath to write the result. This state also
+                // lasts for EXACTLY ONE clock cycle.
+                write_en = 1'b1;
+                
+                // After writing, return to IDLE to wait for the next instruction.
+                next_state = S_IDLE;
             end
             
             default: begin
-                next_state = IDLE;
+                next_state = S_IDLE;
             end
         endcase
     end
     
-    assign vsi_cop_idle = (current_state == IDLE);
+    assign vsi_cop_idle = (current_state == S_IDLE);
 
 endmodule

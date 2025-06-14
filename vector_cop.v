@@ -3,7 +3,10 @@
 // Competition: 2025 Circuit Design Competition
 // Function: A RISC-V Vector Coprocessor
 // -----------------------------------------------------------------------------
-module vector_cop (
+module vector_cop #(
+    parameter VSI_RD_NUM = 8,
+    parameter VSI_WR_NUM = 4
+) (
     // Global interface
     input  wire        vsi_clk,
     input  wire        vsi_rst_n,
@@ -17,74 +20,48 @@ module vector_cop (
     output wire        vsi_cop_idle,
 
     // Rd/Wr interface
-    output wire [7:0][4:0]   vsi_rf_raddr,
-    input  wire [7:0][127:0] vsi_rf_rdata,
-    output wire [3:0][4:0]   vsi_rf_waddr,
-    output wire [3:0][15:0]  vsi_rf_wstrb,
-    output wire [3:0][127:0] vsi_rf_wdata
+    output wire [VSI_RD_NUM-1:0][4:0]   vsi_rf_raddr,
+    input  wire [VSI_RD_NUM-1:0][127:0] vsi_rf_rdata,
+    output wire [VSI_WR_NUM-1:0][4:0]   vsi_rf_waddr,
+    output wire [VSI_WR_NUM-1:0][15:0]  vsi_rf_wstrb,
+    output wire [VSI_WR_NUM-1:0][127:0] vsi_rf_wdata
 );
 
     // --- Internal Wires for Inter-module Communication ---
 
-    // Decoder outputs
-    wire [4:0]  vd_addr;
-    wire [4:0]  vs1_addr;
-    wire [4:0]  vs2_addr;
-    wire [4:0]  uimm;
-    wire        is_vxor;
-    wire        is_vmacc;
-    wire        is_vredsum;
-    wire        is_vslideup;
-    wire        is_vrgather;
-
-    // Control Unit outputs
+    // Control Unit outputs to Datapath
     wire        exec_en;
+    wire        write_en;
+    wire [31:0] op_reg;
+    wire        lmul_reg;
+    wire        sew_reg;
 
-    // --- 1. Instantiate Instruction Decoder ---
-    instruction_decoder i_decoder (
-        .vsi_op      (vsi_op),
-        .vd          (vd_addr),
-        .vs1         (vs1_addr),
-        .vs2         (vs2_addr),
-        .uimm        (uimm),
-        .is_vxor     (is_vxor),
-        .is_vmacc    (is_vmacc),
-        .is_vredsum  (is_vredsum),
-        .is_vslideup (is_vslideup),
-        .is_vrgather (is_vrgather)
-    );
-
-    // --- 2. Instantiate Control Unit ---
+    // --- 1. Instantiate Control Unit ---
     control_unit i_control_unit (
         .vsi_clk      (vsi_clk),
         .vsi_rst_n    (vsi_rst_n),
         .vsi_op_valid (vsi_op_valid),
         .vsi_op_ready (vsi_op_ready),
         .vsi_cop_idle (vsi_cop_idle),
-        .is_vxor      (is_vxor),
-        .is_vmacc     (is_vmacc),
-        .is_vredsum   (is_vredsum),
-        .is_vslideup  (is_vslideup),
-        .is_vrgather  (is_vrgather),
-        .exec_en      (exec_en)
+        .vsi_op       (vsi_op),
+        .vsi_lmul     (vsi_lmul),
+        .vsi_sew      (vsi_sew),
+        .exec_en      (exec_en),
+        .write_en     (write_en),
+        .op_reg       (op_reg),
+        .lmul_reg     (lmul_reg),
+        .sew_reg      (sew_reg)
     );
 
-    // --- 3. Instantiate Datapath ---
+    // --- 2. Instantiate Datapath ---
     datapath i_datapath (
         .vsi_clk      (vsi_clk),
         .vsi_rst_n    (vsi_rst_n),
         .exec_en      (exec_en),
-        .is_vxor      (is_vxor),
-        .is_vmacc     (is_vmacc),
-        .is_vredsum   (is_vredsum),
-        .is_vslideup  (is_vslideup),
-        .is_vrgather  (is_vrgather),
-        .vsi_lmul     (vsi_lmul),
-        .vsi_sew      (vsi_sew),
-        .vd_addr      (vd_addr),
-        .vs1_addr     (vs1_addr),
-        .vs2_addr     (vs2_addr),
-        .uimm         (uimm),
+        .write_en     (write_en),
+        .op_i         (op_reg),
+        .lmul_i       (lmul_reg),
+        .sew_i        (sew_reg),
         .vsi_rf_raddr (vsi_rf_raddr),
         .vsi_rf_rdata (vsi_rf_rdata),
         .vsi_rf_waddr (vsi_rf_waddr),
