@@ -117,6 +117,36 @@ module datapath (
             end
             
             // ... Add logic for vslideup and vrgather here
+            else if (is_vslideup) begin
+                // vslideup.vx vd, vs2, rs1(uimm)
+                // vd[i] = vs2[i - uimm] for i >= uimm
+                // vd[i] = vs2[0] for i < uimm (This is simplified, should be tail/agnostic)
+                if (vsi_sew == 1) begin // int32 elements
+                    for (integer i = 0; i < 4; i = i + 1) begin
+                        if (i >= uimm) begin
+                            result[0][i*32 +: 32] = vs2_data[0][(i-uimm)*32 +: 32];
+                        end else begin
+                            result[0][i*32 +: 32] = vs2_data[0][0*32 +: 32]; // Simplified tail
+                        end
+                    end
+                end
+            end
+            
+            else if (is_vrgather) begin
+                // vrgather.vv vd, vs2, vs1
+                // vd[i] = vs2[vs1[i]]
+                if (vsi_sew == 1) begin // int32 elements
+                    for (integer i = 0; i < 4; i = i + 1) begin
+                        logic [4:0] index;
+                        index = vs1_data[0][i*32 +: 5]; // Get index from vs1
+                        if (index < 4) begin // Bounds check
+                           result[0][i*32 +: 32] = vs2_data[0][index*32 +: 32];
+                        end else begin
+                           result[0][i*32 +: 32] = 32'h0; // Out of bounds is zero
+                        end
+                    end
+                end
+            end
             
         end
     end
