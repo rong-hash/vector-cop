@@ -1,0 +1,10 @@
+./defines.v
+./vector_fetch.v
+./vector_decode_execute.v
+./vector_writeback.v
+./vxor_unit.v
+./vmacc_unit.v
+./vredsum_unit.v
+./vslideup_unit.v
+./vrgather_unit.v
+./vector_cop.v 
